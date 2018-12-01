@@ -9,3 +9,7 @@
 */datasets
 
 __pycache__
+
+# JH added 
+# ignore pycharm project files
+.idea/
