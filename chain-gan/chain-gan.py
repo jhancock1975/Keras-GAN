@@ -7,7 +7,9 @@ from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.convolutional import UpSampling2D, Conv2D
 from keras.models import Sequential, Model
 from keras.optimizers import Adam
+from keras.callbacks import TensorBoard
 
+import tensorflow as tf
 import matplotlib.pyplot as plt
 
 import sys
@@ -15,6 +17,23 @@ import sys
 import numpy as np
 
 class DCGAN():
+
+    def write_log(self, callback, names, logs, batch_no):
+        """
+        copied from https://gist.github.com/joelthchao/ef6caa586b647c3c032a4f84d52e3a11
+        :param names:
+        :param logs:
+        :param batch_no:
+        :return:
+        """
+        for name, value in zip(names, logs):
+            summary = tf.Summary()
+            summary_value = summary.value.add()
+            summary_value.simple_value = value
+            summary_value.tag = name
+            callback.writer.add_summary(summary, batch_no)
+            callback.writer.flush()
+
     def __init__(self):
         # Input shape
         self.img_rows = 28
@@ -116,6 +135,10 @@ class DCGAN():
         valid = np.ones((batch_size, 1))
         fake = np.zeros((batch_size, 1))
 
+        log_path = './logs'
+        callback = TensorBoard(log_path)
+        callback.set_model(self.combined)
+
         for epoch in range(epochs):
 
             # ---------------------
@@ -144,6 +167,8 @@ class DCGAN():
 
             # Plot the progress
             print ("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, d_loss[0], 100*d_loss[1], g_loss))
+            self.write_log(callback, ['Discriminator Loss', 'Discriminator Accuracy',
+                                      'Generator Loss'],  [d_loss[0], 100*d_loss[1], g_loss], epoch)
 
             # If at save interval => save generated image samples
             if epoch % save_interval == 0:

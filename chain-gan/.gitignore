@@ -1,0 +1,2 @@
+# ignore tensorboard logs directory
+logs/
