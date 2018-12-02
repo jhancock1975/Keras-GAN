@@ -280,9 +280,9 @@ class ChainGAN():
         # Plot the progress
         # and save data for tensorboard
         # ---------------------
-        print("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, d_loss[0], 100 * d_loss[1], g_loss))
-        self.write_log(callback, ['Discriminator Loss', 'Discriminator Accuracy',
-                                  'Generator Loss'], [d_loss[0], 100 * d_loss[1], g_loss], epoch)
+        print("%d [D0 loss: %f, acc.: %.2f%%] [G0 loss: %f]" % (epoch, d_loss[0], 100 * d_loss[1], g_loss))
+        self.write_log(callback, ['Discriminator 0 Loss', 'Discriminator 0 Accuracy',
+                                  'Generator 0 Loss'], [d_loss[0], 100 * d_loss[1], g_loss], epoch)
         # If at save interval => save generated image samples
         if epoch % save_interval == 0:
             self.save_imgs(epoch, self.generator_0, "mnist_generator_0")
@@ -299,21 +299,21 @@ class ChainGAN():
         noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
         gen_imgs = self.generator_0.predict(noise)
         # Train the discriminator (real classified as ones and generated as zeros)
-        d_loss_real = self.discriminator_0.train_on_batch(imgs, valid)
-        d_loss_fake = self.discriminator_0.train_on_batch(gen_imgs, fake)
+        d_loss_real = self.discriminator_1.train_on_batch(imgs, valid)
+        d_loss_fake = self.discriminator_1.train_on_batch(gen_imgs, fake)
         d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
         # ---------------------
         #  Train Zeroth Generator
         # ---------------------
         # Train the generator (wants discriminator to mistake images as real)
-        g_loss = self.combined_0.train_on_batch(noise, valid)
+        g_loss = self.combined_1.train_on_batch(noise, valid)
         # ---------------------
         # Plot the progress
         # and save data for tensorboard
         # ---------------------
-        print("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, d_loss[0], 100 * d_loss[1], g_loss))
-        self.write_log(callback, ['Discriminator Loss', 'Discriminator Accuracy',
-                                  'Generator Loss'], [d_loss[0], 100 * d_loss[1], g_loss], epoch)
+        print("%d [D1 loss: %f, acc.: %.2f%%] [G1 loss: %f]" % (epoch, d_loss[0], 100 * d_loss[1], g_loss))
+        self.write_log(callback, ['Discriminator 1 Loss', 'Discriminator 1 Accuracy',
+                                  'Generator 1 Loss'], [d_loss[0], 100 * d_loss[1], g_loss], epoch)
         # If at save interval => save generated image samples
         if epoch % save_interval == 0:
             self.save_imgs(epoch, self.generator_1, "mnist_generator_1")
