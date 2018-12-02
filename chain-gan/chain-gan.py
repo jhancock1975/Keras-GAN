@@ -159,7 +159,7 @@ class ChainGAN():
 
         # The first generator takes zeroth generator output and
         # zeroth discriminator output as input and generates imgs
-        z = Input(shape=(self.latent_dim + 1,))
+        z = Input(shape=(self.latent_dim,))
         img = self.generator_1(z)
 
         # For the zeroth combined model we will only train the generator
@@ -246,8 +246,8 @@ class ChainGAN():
         callback.set_model(self.combined_0)
 
         for epoch in range(epochs):
-            self.train_zeroth_model(X_train, batch_size, callback, epoch, fake, save_interval, valid)
-            self.train_first_model(X_train, batch_size, callback, epoch, fake, save_interval, valid)
+            gen_imgs = self.train_zeroth_model(X_train, batch_size, callback, epoch, fake, save_interval, valid)
+            self.train_first_model(gen_imgs, batch_size, callback, epoch, fake, save_interval, valid)
 
     def train_zeroth_model(self, X_train, batch_size, callback, epoch, fake, save_interval, valid):
         """
@@ -290,7 +290,7 @@ class ChainGAN():
 
     def train_first_model(self, X_train, batch_size, callback, epoch, fake, save_interval, valid):
         # ---------------------
-        #  Train Zeroth Discriminator
+        #  Train first discriminator
         # ---------------------
         # Select a random half of images
         idx = np.random.randint(0, X_train.shape[0], batch_size)
