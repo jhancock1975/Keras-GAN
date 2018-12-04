@@ -36,6 +36,7 @@ class ChainGAN():
         self.channels = 1
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
         self.latent_dim = 100
+        self.gen_0_output_size=785
 
         optimizer = Adam(0.0002, 0.5)
 
@@ -159,7 +160,7 @@ class ChainGAN():
 
         # The first generator takes zeroth generator output and
         # zeroth discriminator output as input and generates imgs
-        z = Input(shape=(784,))
+        z = Input(shape=(self.gen_0_output_size,))
         img = self.generator_1(z)
 
         # For the zeroth combined model we will only train the generator
@@ -177,7 +178,7 @@ class ChainGAN():
     def build_generator_1(self):
 
         model = Sequential()
-        model.add(Dense(128 * 7 * 7, activation="relu", input_dim=784))
+        model.add(Dense(128 * 7 * 7, activation="relu", input_dim=self.gen_0_output_size))
         model.summary()
         model.add(Reshape((7,7,128)))
         model.add(UpSampling2D())
@@ -193,7 +194,7 @@ class ChainGAN():
 
         model.summary()
 
-        noise = Input(shape=(784,))
+        noise = Input(shape=(self.gen_0_output_size,))
         img = model(noise)
 
         return Model(noise, img)
@@ -246,8 +247,10 @@ class ChainGAN():
         callback.set_model(self.combined_0)
 
         for epoch in range(epochs):
-            gen_imgs = self.train_zeroth_model(X_train, batch_size, callback, epoch, fake, save_interval, valid)
-            self.train_first_model(X_train, gen_imgs, batch_size, callback, epoch, fake, save_interval, valid)
+            gen_imgs, discriminator_loss_fake = self.train_zeroth_model(X_train, batch_size, callback,
+                                                                        epoch, fake, save_interval, valid)
+            self.train_first_model(X_train, gen_imgs, discriminator_loss_fake,
+                                   batch_size, callback, epoch, fake, save_interval, valid)
 
     def train_zeroth_model(self, X_train, batch_size, callback, epoch, fake, save_interval, valid):
         """
@@ -286,18 +289,20 @@ class ChainGAN():
         # If at save interval => save generated image samples
         if epoch % save_interval == 0:
             self.save_imgs(epoch, self.generator_0, "mnist_generator_0")
-        return gen_imgs
+        return gen_imgs, d_loss_fake
 
-    def train_first_model(self, X_train, gen_0_output, batch_size, callback, epoch, fake, save_interval, valid):
+    def train_first_model(self, X_train, gen_0_output, d0_loss_fake, batch_size, callback, epoch, fake, save_interval,
+                          valid):
         # ---------------------
         #  Train first discriminator
         # ---------------------
         # Select a random half of images
         idx = np.random.randint(0, X_train.shape[0], batch_size)
         imgs = X_train[idx]
-        # Sample noise and generate a batch of new images
-        noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
-        gen_0_output = np.reshape(gen_0_output, (32,784))
+        # reshape generator 0 output and add loss from previous
+        # discriminator
+        gen_0_output = np.reshape(gen_0_output, (32, self.gen_0_output_size - 1))
+        gen_0_output = np.vstack((gen_0_output, 32*[d0_loss_fake]))
         gen_imgs = self.generator_1.predict(gen_0_output)
         # Train the discriminator (real classified as ones and generated as zeros)
         d_loss_real = self.discriminator_1.train_on_batch(imgs, valid)
