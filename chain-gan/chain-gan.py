@@ -36,7 +36,7 @@ class ChainGAN():
         self.channels = 1
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
         self.latent_dim = 100
-        self.gen_0_output_size=785
+        self.gen_0_output_size = 785
 
         optimizer = Adam(0.0002, 0.5)
 
@@ -301,8 +301,8 @@ class ChainGAN():
         imgs = X_train[idx]
         # reshape generator 0 output and add loss from previous
         # discriminator
-        gen_0_output = np.reshape(gen_0_output, (32, self.gen_0_output_size - 1))
-        gen_0_output = np.vstack((gen_0_output, 32*[d0_loss_fake]))
+        gen_0_output = np.reshape(gen_0_output, (32, self.gen_0_output_size -1))
+        gen_0_output = np.concatenate((gen_0_output, np.reshape(32*[d0_loss_fake[0]],(32,1))), axis=1)
         gen_imgs = self.generator_1.predict(gen_0_output)
         # Train the discriminator (real classified as ones and generated as zeros)
         d_loss_real = self.discriminator_1.train_on_batch(imgs, valid)
