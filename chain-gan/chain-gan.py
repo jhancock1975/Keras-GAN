@@ -36,12 +36,13 @@ class ChainGAN():
         self.channels = 1
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
         self.latent_dim = 100
+        self.max_chain_length = 5
         self.gen_0_output_size = 785
 
         optimizer = Adam(0.0002, 0.5)
 
         self.build_zeroth_model(optimizer)
-        self.build_first_model(optimizer)
+        self.build_next_models(optimizer)
 
     def write_log(self, callback, names, logs, batch_no):
         """
@@ -144,36 +145,44 @@ class ChainGAN():
 
         return Model(img, validity)
 
-    def build_first_model(self, optimizer):
+    def build_next_models(self, optimizer):
+        """
+        builds first discriminator and generator
+        :return:
+        """
+        self.chained_models = [self.build_next_model(optimizer) for i in range(self.max_chain_length)]
+
+
+    def build_next_model(self, optimizer):
         """
         builds first discriminator and generator
         :return:
         """
         # Build and compile the zeroth discriminator
-        self.discriminator_1 = self.build_discriminator_0()
-        self.discriminator_1.compile(loss='binary_crossentropy',
+        discriminator = self.build_discriminator_0()
+        discriminator.compile(loss='binary_crossentropy',
                                      optimizer=optimizer,
                                      metrics=['accuracy'])
 
         # Build the first generator
-        self.generator_1 = self.build_generator_1()
+        generator = self.build_generator_1()
 
         # The first generator takes zeroth generator output and
         # zeroth discriminator output as input and generates imgs
         z = Input(shape=(self.gen_0_output_size,))
-        img = self.generator_1(z)
+        img = generator(z)
 
         # For the zeroth combined model we will only train the generator
-        self.discriminator_1.trainable = False
+        discriminator.trainable = False
 
         # The zeroth discriminator takes generated images as input and determines validity
-        valid = self.discriminator_1(img)
+        valid = discriminator(img)
 
         # The zeroth combined model  (stacked zeroth generator and zeroth discriminator)
         # Trains the zeroth generator to fool the zeroth discriminator
-        self.combined_1 = Model(z, valid)
-        self.combined_1.compile(loss='binary_crossentropy', optimizer=optimizer)
-        pass
+        combined = Model(z, valid)
+        combined.compile(loss='binary_crossentropy', optimizer=optimizer)
+        return {'generator': generator, 'discriminator': discriminator, 'combined': combined}
 
     def build_generator_1(self):
 
@@ -199,36 +208,6 @@ class ChainGAN():
 
         return Model(noise, img)
 
-    def build_discriminator_1(self):
-
-        model = Sequential()
-
-        model.add(Conv2D(32, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(Dropout(0.25))
-        model.add(Conv2D(64, kernel_size=3, strides=2, padding="same"))
-        model.add(ZeroPadding2D(padding=((0,1),(0,1))))
-        model.add(BatchNormalization(momentum=0.8))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(Dropout(0.25))
-        model.add(Conv2D(128, kernel_size=3, strides=2, padding="same"))
-        model.add(BatchNormalization(momentum=0.8))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(Dropout(0.25))
-        model.add(Conv2D(256, kernel_size=3, strides=1, padding="same"))
-        model.add(BatchNormalization(momentum=0.8))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(Dropout(0.25))
-        model.add(Flatten())
-        model.add(Dense(1, activation='sigmoid'))
-
-        model.summary()
-
-        img = Input(shape=self.img_shape)
-        validity = model(img)
-
-        return Model(img, validity)
-
     def train(self, epochs, batch_size=128, save_interval=50):
 
         # Load the dataset
@@ -249,7 +228,8 @@ class ChainGAN():
         for epoch in range(epochs):
             gen_imgs, discriminator_loss_fake = self.train_zeroth_model(X_train, batch_size, callback,
                                                                         epoch, fake, save_interval, valid)
-            self.train_first_model(X_train, gen_imgs, discriminator_loss_fake,
+            for i in range(self.max_chain_length):
+                gen_imgs, discriminator_loss_fake = self.train_next_model(i, X_train, gen_imgs, discriminator_loss_fake,
                                    batch_size, callback, epoch, fake, save_interval, valid)
 
     def train_zeroth_model(self, X_train, batch_size, callback, epoch, fake, save_interval, valid):
@@ -291,8 +271,8 @@ class ChainGAN():
             self.save_imgs(epoch, self.generator_0, "mnist_generator_0")
         return gen_imgs, d_loss_fake
 
-    def train_first_model(self, X_train, gen_0_output, d0_loss_fake, batch_size, callback, epoch, fake, save_interval,
-                          valid):
+    def train_next_model(self, model_num, X_train, gen_prev_output, d0_loss_fake, batch_size, callback, epoch, fake, save_interval,
+                         valid):
         # ---------------------
         #  Train first discriminator
         # ---------------------
@@ -301,28 +281,31 @@ class ChainGAN():
         imgs = X_train[idx]
         # reshape generator 0 output and add loss from previous
         # discriminator
-        gen_0_output = np.reshape(gen_0_output, (32, self.gen_0_output_size -1))
-        gen_0_output = np.concatenate((gen_0_output, np.reshape(32*[d0_loss_fake[0]],(32,1))), axis=1)
-        gen_imgs = self.generator_1.predict(gen_0_output)
+        gen_prev_output = np.reshape(gen_prev_output, (32, self.gen_0_output_size - 1))
+        gen_prev_output = np.concatenate((gen_prev_output, np.reshape(32 * [d0_loss_fake[0]], (32, 1))), axis=1)
+        gen_imgs = self.chained_models[model_num]['generator'].predict(gen_prev_output)
         # Train the discriminator (real classified as ones and generated as zeros)
-        d_loss_real = self.discriminator_1.train_on_batch(imgs, valid)
-        d_loss_fake = self.discriminator_1.train_on_batch(gen_imgs, fake)
+        d_loss_real = self.chained_models[model_num]['discriminator'].train_on_batch(imgs, valid)
+        d_loss_fake = self.chained_models[model_num]['discriminator'].train_on_batch(gen_imgs, fake)
         d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
         # ---------------------
         #  Train Zeroth Generator
         # ---------------------
         # Train the generator (wants discriminator to mistake images as real)
-        g_loss = self.combined_1.train_on_batch(gen_0_output, valid)
+        g_loss = self.chained_models[model_num]['combined'].train_on_batch(gen_prev_output, valid)
         # ---------------------
         # Plot the progress
         # and save data for tensorboard
         # ---------------------
-        print("%d [D1 loss: %f, acc.: %.2f%%] [G1 loss: %f]" % (epoch, d_loss[0], 100 * d_loss[1], g_loss))
-        self.write_log(callback, ['Discriminator 1 Loss', 'Discriminator 1 Accuracy',
-                                  'Generator 1 Loss'], [d_loss[0], 100 * d_loss[1], g_loss], epoch)
+        model_number = model_num+1
+        print("%d [D%d loss: %f, acc.: %.2f%%] [G%d loss: %f]"
+              % (epoch, model_number, d_loss[0], 100 * d_loss[1], model_number, g_loss))
+        self.write_log(callback, [('Discriminator %d Loss' % model_number), ('Discriminator %d Accuracy' % model_number),
+                                  ('Generator %d Loss' % model_number)], [d_loss[0], 100 * d_loss[1], g_loss], epoch)
         # If at save interval => save generated image samples
         if epoch % save_interval == 0:
-            self.save_imgs(epoch, self.generator_1, "mnist_generator_1")
+            self.save_imgs(epoch, self.chained_models[model_num]['generator'], ("mnist_generator_%d" % model_number))
+        return gen_imgs, d_loss_fake
 
     def save_imgs(self, epoch, generator, generator_name):
         r, c = 5, 5
