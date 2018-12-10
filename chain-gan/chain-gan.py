@@ -108,6 +108,7 @@ class ChainGAN():
         model.add(Conv2D(self.channels, kernel_size=3, padding="same"))
         model.add(Activation("tanh"))
 
+        print("---generator 0 ---")
         model.summary()
 
         noise = Input(shape=(self.latent_dim,))
@@ -138,6 +139,7 @@ class ChainGAN():
         model.add(Flatten())
         model.add(Dense(1, activation='sigmoid'))
 
+        print("---discriminator 0 ---")
         model.summary()
 
         img = Input(shape=self.img_shape)
@@ -201,6 +203,7 @@ class ChainGAN():
         model.add(Conv2D(self.channels, kernel_size=3, padding="same"))
         model.add(Activation("tanh"))
 
+        print("--- building ith genertor---")
         model.summary()
 
         noise = Input(shape=(self.gen_0_output_size,))
